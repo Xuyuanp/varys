@@ -1,9 +1,10 @@
 package varys
 
 import (
+	"bytes"
+	"io"
 	"os"
 
-	"github.com/PuerkitoBio/goquery"
 	"github.com/Xuyuanp/common"
 	"github.com/Xuyuanp/logo"
 	"github.com/garyburd/redigo/redis"
@@ -16,30 +17,33 @@ const (
 	queueFailed  = "queue-failed"
 )
 
-type Options struct{}
+// Options crawler options.
+type Options struct {
+	maxDepth int
+}
 
+// Crawler struct
 type Crawler struct {
 	options Options
 
+	fetcher Fetcher
 	spiders []Spider
 	Logger  logo.Logger
 
 	pool *redis.Pool
 
-	chURLs  chan string
-	chEntry <-chan entry
-
-	done chan bool
+	chURLs chan string
 
 	wrapper common.WaitGroupWrapper
 }
 
+// NewCrawler creates a new instance of Crawler.
 func NewCrawler(opts Options) (*Crawler, error) {
 	return &Crawler{
 		options: opts,
+		fetcher: newURLFetcher(),
 		Logger:  logo.New(logo.LevelDebug, os.Stdout, "[Varys] ", logo.LfullFlags),
-		chURLs:  make(chan string),
-		done:    make(chan bool),
+		chURLs:  make(chan string, 1),
 		pool: &redis.Pool{
 			Dial: func() (redis.Conn, error) {
 				return redis.Dial("tcp", "127.0.0.1:6379")
@@ -49,35 +53,35 @@ func NewCrawler(opts Options) (*Crawler, error) {
 	}, nil
 }
 
+// Crawl starts crawling with these start URLs.
 func (c *Crawler) Crawl(startURLs ...string) error {
-	c.Enqueue(startURLs...)
+	c.enqueue(startURLs...)
 	return c.crawl()
 }
 
 func (c *Crawler) crawl() error {
-	c.chEntry = NewDownloader(4, c.chURLs)
-	c.wrapper.Wrap(func() {
-		for {
-			url, err := c.Dequeue()
+	done := false
+	for !done {
+		select {
+		case url := <-c.chURLs:
+			c.crawlPage(url)
+		default:
+			url, err := c.dequeue()
 			if err != nil || url == "" {
-				c.Logger.Warning("done")
-				c.done <- true
-				return
+				c.Logger.Info("done")
+				done = true
 			}
-			c.PendingURL(url)
+			c.pendingURL(url)
 			c.chURLs <- url
 		}
-	})
-	c.waitingForDownloader()
-	c.wrapper.Wait()
+	}
+	c.cleanup()
 	return nil
 }
 
-func (c *Crawler) Enqueue(urls ...string) {
+func (c *Crawler) enqueue(urls ...string) {
 	conn := c.pool.Get()
 	defer conn.Close()
-
-	c.Logger.Debug("enqueue urls: %v", urls)
 
 	for _, url := range urls {
 		if dup, err := redis.Bool(conn.Do("SISMEMBER", queueFailed, url)); err == nil && dup {
@@ -89,7 +93,6 @@ func (c *Crawler) Enqueue(urls ...string) {
 		if dup, err := redis.Bool(conn.Do("SISMEMBER", queuePending, url)); err == nil && dup {
 			continue
 		}
-		c.Logger.Debug("enqueue url: %s", url)
 		_, err := conn.Do("SADD", queueReady, url)
 		if err != nil {
 			c.Logger.Warning("enqueue url %s failed: %s", url, err)
@@ -97,35 +100,41 @@ func (c *Crawler) Enqueue(urls ...string) {
 	}
 }
 
-func (c *Crawler) Dequeue() (url string, err error) {
-	c.Logger.Debug("dequeue")
+func (c *Crawler) dequeue() (url string, err error) {
 	conn := c.pool.Get()
 	defer conn.Close()
 	url, err = redis.String(conn.Do("SRANDMEMBER", queueReady))
 	return
 }
 
-func (c *Crawler) PendingURL(url string) error {
+func (c *Crawler) repaire() {
+	conn := c.pool.Get()
+	defer conn.Close()
+	conn.Do("SUNION", queueReady)
+}
+
+func (c *Crawler) pendingURL(url string) error {
 	conn := c.pool.Get()
 	defer conn.Close()
 	_, err := conn.Do("SMOVE", queueReady, queuePending, url)
 	return err
 }
 
-func (c *Crawler) DoneURL(url string) error {
+func (c *Crawler) doneURL(url string) error {
 	conn := c.pool.Get()
 	defer conn.Close()
 	_, err := conn.Do("SMOVE", queuePending, queueDone, url)
 	return err
 }
 
-func (c *Crawler) RetryURL(url string) error {
+func (c *Crawler) retryURL(url string) error {
 	conn := c.pool.Get()
 	defer conn.Close()
 	_, err := conn.Do("SMOVE", queuePending, queueFailed, url)
 	return err
 }
 
+// RegisterSpider registers spider and its middlewares.
 func (c *Crawler) RegisterSpider(spider Spider, ms ...SpiderMiddleware) {
 	for i := len(ms) - 1; i >= 0; i-- {
 		spider = ms[i](spider)
@@ -133,28 +142,38 @@ func (c *Crawler) RegisterSpider(spider Spider, ms ...SpiderMiddleware) {
 	c.spiders = append(c.spiders, spider)
 }
 
-func (c *Crawler) waitingForDownloader() {
-	for {
-		en := <-c.chEntry
-		c.Logger.Debug("got entry:%+v", en)
-		c.processDocument(en)
-	}
+func (c *Crawler) runSpider(spider Spider, url string, r io.Reader) {
+	c.wrapper.Wrap(func() {
+		urls, err := spider.Parse(url, r)
+		if err != nil {
+			c.retryURL(url)
+		} else {
+			c.doneURL(url)
+			c.enqueue(urls...)
+		}
+	})
 }
 
-func (c *Crawler) processDocument(en entry) {
-	for _, spider := range c.spiders {
-		c.wrapper.Wrap(func() {
-			c.runSpider(spider, en.url, goquery.CloneDocument(en.doc))
-		})
-	}
-}
-
-func (c *Crawler) runSpider(spider Spider, url string, doc *goquery.Document) {
-	urls, err := spider.Parse(doc)
+func (c *Crawler) crawlPage(url string) {
+	c.Logger.Info("crawling page %s", url)
+	body, err := c.fetcher.Fetch(url)
 	if err != nil {
-		c.RetryURL(url)
-	} else {
-		c.DoneURL(url)
-		c.Enqueue(urls...)
+		c.Logger.Warning("fetch page %s failed: %s", url, err)
+		c.retryURL(url)
+		return
 	}
+
+	for _, spider := range c.spiders {
+		c.runSpider(spider, url, bytes.NewReader(body))
+	}
+	c.wrapper.Wait()
+}
+
+func (c *Crawler) cleanup() {
+	// conn := c.pool.Get()
+	// defer conn.Close()
+	//
+	// conn.Do("DEL", queueDone)
+	// conn.Do("DEL", queueReady)
+	// conn.Do("DEL", queuePending)
 }
