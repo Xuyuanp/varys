@@ -17,3 +17,10 @@ func (sf SpiderFunc) Parse(url string, r io.Reader) ([]string, error) {
 
 // SpiderMiddleware type.
 type SpiderMiddleware func(Spider) Spider
+
+func ReduceSpideMiddlewares(spider Spider, ms ...SpiderMiddleware) Spider {
+	for i := len(ms) - 1; i >= 0; i-- {
+		spider = ms[i](spider)
+	}
+	return spider
+}

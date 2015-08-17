@@ -61,15 +61,15 @@ func (c *Crawler) crawl() error {
 		}
 	}
 	c.queue.Cleanup()
+	if failedURLs := c.queue.FailedURLs(); len(failedURLs) > 0 {
+		c.Logger.Warning("failed URLs: %v", failedURLs)
+	}
 	return nil
 }
 
 // RegisterSpider registers spider and its middlewares.
 func (c *Crawler) RegisterSpider(spider Spider, ms ...SpiderMiddleware) {
-	for i := len(ms) - 1; i >= 0; i-- {
-		spider = ms[i](spider)
-	}
-	c.spiders = append(c.spiders, spider)
+	c.spiders = append(c.spiders, ReduceSpideMiddlewares(spider, ms...))
 }
 
 func (c *Crawler) runSpider(spider Spider, url string, r io.Reader) {

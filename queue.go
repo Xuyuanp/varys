@@ -18,6 +18,8 @@ type Queue interface {
 	DoneURL(url string) error
 	RetryURL(url string) error
 
+	FailedURLs() []string
+
 	Cleanup()
 }
 
@@ -90,6 +92,16 @@ func (q *RedisQueue) RetryURL(url string) error {
 	defer conn.Close()
 	_, err := conn.Do("SMOVE", queuePending, queueFailed, url)
 	return err
+}
+
+func (q *RedisQueue) FailedURLs() []string {
+	conn := q.pool.Get()
+	defer conn.Close()
+	urls, err := redis.Strings(conn.Do("SMEMBERS", queueFailed))
+	if err != nil {
+		return nil
+	}
+	return urls
 }
 
 func (q *RedisQueue) Cleanup() {
