@@ -20,14 +20,18 @@ package varys
 import (
 	"bytes"
 	"io"
+	"math/rand"
 	"os"
+	"time"
 
 	"github.com/Xuyuanp/logo"
 )
 
 // Options crawler options.
 type Options struct {
-	maxDepth int
+	MaxDepth int
+	SleptMin int
+	SleptMax int
 }
 
 // Crawler struct
@@ -43,6 +47,8 @@ type Crawler struct {
 
 	wrapper Wrapper
 }
+
+var random = rand.New(rand.NewSource(time.Now().Unix()))
 
 // NewCrawler creates a new instance of Crawler.
 func NewCrawler(opts Options) (*Crawler, error) {
@@ -66,6 +72,7 @@ func (c *Crawler) crawl() error {
 	for !done {
 		select {
 		case url := <-c.chURLs:
+			c.sleep()
 			c.crawlPage(url)
 		default:
 			url, err := c.queue.Dequeue()
@@ -81,6 +88,13 @@ func (c *Crawler) crawl() error {
 		c.Logger.Warning("failed URLs: %v", failedURLs)
 	}
 	return nil
+}
+
+func (c *Crawler) sleep() {
+	rang := c.options.SleptMax - c.options.SleptMin
+	r := random.Intn(rang)
+	dur := c.options.SleptMin + r
+	time.Sleep(time.Second * time.Duration(dur))
 }
 
 // RegisterSpider registers spider and its middlewares.
