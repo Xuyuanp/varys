@@ -51,11 +51,11 @@ type Crawler struct {
 var random = rand.New(rand.NewSource(time.Now().Unix()))
 
 // NewCrawler creates a new instance of Crawler.
-func NewCrawler(opts Options) (*Crawler, error) {
+func NewCrawler(opts Options, queue Queue, fetcher Fetcher) (*Crawler, error) {
 	return &Crawler{
 		options: opts,
-		fetcher: newURLFetcher(),
-		queue:   NewRedisQueue(),
+		fetcher: fetcher,
+		queue:   queue,
 		Logger:  logo.New(logo.LevelDebug, os.Stdout, "[Varys] ", logo.LfullFlags),
 		chURLs:  make(chan string, 1),
 	}, nil

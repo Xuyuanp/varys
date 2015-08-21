@@ -12,19 +12,19 @@ type Fetcher interface {
 	Fetch(url string) (body []byte, err error)
 }
 
-type urlFetcher struct {
+type URLFetcher struct {
 	client *http.Client
 }
 
-func newURLFetcher() *urlFetcher {
+func NewURLFetcher() *URLFetcher {
 	cfg := &tls.Config{InsecureSkipVerify: true}
 	transport := &http.Transport{TLSClientConfig: cfg}
 	client := &http.Client{Transport: transport}
-	return &urlFetcher{client: client}
+	return &URLFetcher{client: client}
 }
 
 // Fetch web page from url.
-func (f *urlFetcher) Fetch(url string) (body []byte, err error) {
+func (f *URLFetcher) Fetch(url string) (body []byte, err error) {
 	resp, err := f.client.Get(url)
 	if err != nil {
 		return nil, err
