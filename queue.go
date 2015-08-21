@@ -1,6 +1,10 @@
 package varys
 
-import "github.com/garyburd/redigo/redis"
+import (
+	"time"
+
+	"github.com/garyburd/redigo/redis"
+)
 
 type Queue interface {
 	Enqueue(urls ...string) error
@@ -25,11 +29,26 @@ type RedisQueue struct {
 	QueueFailed  string
 }
 
-func NewRedisQueue() *RedisQueue {
+func NewRedisQueue(url, password string) *RedisQueue {
 	return &RedisQueue{
 		pool: &redis.Pool{
 			Dial: func() (redis.Conn, error) {
-				return redis.Dial("tcp", "127.0.0.1:6379")
+				conn, err := redis.Dial("tcp", url)
+				if err != nil {
+					return nil, err
+				}
+				if len(password) == 0 {
+					return conn, err
+				}
+				if _, err = conn.Do("AUTH", password); err != nil {
+					conn.Close()
+					return nil, err
+				}
+				return conn, nil
+			},
+			TestOnBorrow: func(c redis.Conn, t time.Time) error {
+				_, err := c.Do("PING")
+				return err
 			},
 			Wait: true,
 		},
