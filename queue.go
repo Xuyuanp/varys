@@ -2,13 +2,6 @@ package varys
 
 import "github.com/garyburd/redigo/redis"
 
-const (
-	queueReady   = "queue-ready"
-	queuePending = "queue-pending"
-	queueDone    = "queue-done"
-	queueFailed  = "queue-failed"
-)
-
 type Queue interface {
 	Enqueue(urls ...string) error
 	Dequeue() (string, error)
@@ -25,6 +18,11 @@ type Queue interface {
 
 type RedisQueue struct {
 	pool *redis.Pool
+
+	QueueReady   string
+	QueuePending string
+	QueueDone    string
+	QueueFailed  string
 }
 
 func NewRedisQueue() *RedisQueue {
@@ -35,6 +33,10 @@ func NewRedisQueue() *RedisQueue {
 			},
 			Wait: true,
 		},
+		QueueReady:   "queue-ready",
+		QueuePending: "queue-pending",
+		QueueDone:    "queue-done",
+		QueueFailed:  "queue-failed",
 	}
 }
 
@@ -43,16 +45,16 @@ func (q *RedisQueue) Enqueue(urls ...string) error {
 	defer conn.Close()
 
 	for _, url := range urls {
-		if dup, err := redis.Bool(conn.Do("SISMEMBER", queueFailed, url)); err == nil && dup {
+		if dup, err := redis.Bool(conn.Do("SISMEMBER", q.QueueFailed, url)); err == nil && dup {
 			continue
 		}
-		if dup, err := redis.Bool(conn.Do("SISMEMBER", queueDone, url)); err == nil && dup {
+		if dup, err := redis.Bool(conn.Do("SISMEMBER", q.QueueDone, url)); err == nil && dup {
 			continue
 		}
-		if dup, err := redis.Bool(conn.Do("SISMEMBER", queuePending, url)); err == nil && dup {
+		if dup, err := redis.Bool(conn.Do("SISMEMBER", q.QueuePending, url)); err == nil && dup {
 			continue
 		}
-		_, err := conn.Do("SADD", queueReady, url)
+		_, err := conn.Do("SADD", q.QueueReady, url)
 		if err != nil {
 			return err
 		}
@@ -64,11 +66,11 @@ func (q *RedisQueue) Dequeue() (url string, err error) {
 	conn := q.pool.Get()
 	defer conn.Close()
 
-	url, err = redis.String(conn.Do("SPOP", queueReady))
+	url, err = redis.String(conn.Do("SPOP", q.QueueReady))
 	if err != nil {
 		return "", nil
 	}
-	_, err = conn.Do("SADD", queuePending, url)
+	_, err = conn.Do("SADD", q.QueuePending, url)
 
 	return
 }
@@ -76,28 +78,28 @@ func (q *RedisQueue) Dequeue() (url string, err error) {
 func (q *RedisQueue) Repaire() error {
 	conn := q.pool.Get()
 	defer conn.Close()
-	_, err := conn.Do("SUNIONSTORE", queueReady, queueReady, queuePending)
+	_, err := conn.Do("SUNIONSTORE", q.QueueReady, q.QueueReady, q.QueuePending)
 	return err
 }
 
 func (q *RedisQueue) DoneURL(url string) error {
 	conn := q.pool.Get()
 	defer conn.Close()
-	_, err := conn.Do("SMOVE", queuePending, queueDone, url)
+	_, err := conn.Do("SMOVE", q.QueuePending, q.QueueDone, url)
 	return err
 }
 
 func (q *RedisQueue) RetryURL(url string) error {
 	conn := q.pool.Get()
 	defer conn.Close()
-	_, err := conn.Do("SMOVE", queuePending, queueFailed, url)
+	_, err := conn.Do("SMOVE", q.QueuePending, q.QueueFailed, url)
 	return err
 }
 
 func (q *RedisQueue) FailedURLs() []string {
 	conn := q.pool.Get()
 	defer conn.Close()
-	urls, err := redis.Strings(conn.Do("SMEMBERS", queueFailed))
+	urls, err := redis.Strings(conn.Do("SMEMBERS", q.QueueFailed))
 	if err != nil {
 		return nil
 	}
