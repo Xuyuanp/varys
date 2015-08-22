@@ -14,11 +14,13 @@ type Fetcher interface {
 	Fetch(url string) (body []byte, err error)
 }
 
+// URLFetcher struct
 type URLFetcher struct {
 	client  *http.Client
 	prepare func(*http.Request)
 }
 
+// NewURLFetcher creates a new URLFetcher instance.
 func NewURLFetcher(prepare func(*http.Request)) Fetcher {
 	cfg := &tls.Config{InsecureSkipVerify: true}
 	transport := &http.Transport{TLSClientConfig: cfg}

@@ -29,7 +29,7 @@ type RedisQueue struct {
 	QueueFailed  string
 }
 
-func NewRedisQueue(url, password string) *RedisQueue {
+func NewRedisQueue(url, password, prefix string) *RedisQueue {
 	return &RedisQueue{
 		pool: &redis.Pool{
 			Dial: func() (redis.Conn, error) {
@@ -52,10 +52,10 @@ func NewRedisQueue(url, password string) *RedisQueue {
 			},
 			Wait: true,
 		},
-		QueueReady:   "queue-ready",
-		QueuePending: "queue-pending",
-		QueueDone:    "queue-done",
-		QueueFailed:  "queue-failed",
+		QueueReady:   prefix + "queue-ready",
+		QueuePending: prefix + "queue-pending",
+		QueueDone:    prefix + "queue-done",
+		QueueFailed:  prefix + "queue-failed",
 	}
 }
 

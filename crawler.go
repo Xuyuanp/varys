@@ -68,6 +68,7 @@ func (c *Crawler) Crawl(startURLs ...string) error {
 }
 
 func (c *Crawler) crawl() error {
+	c.queue.Repaire()
 	done := false
 	for !done {
 		select {
@@ -79,8 +80,9 @@ func (c *Crawler) crawl() error {
 			if err != nil || url == "" {
 				c.Logger.Info("done")
 				done = true
+			} else {
+				c.chURLs <- url
 			}
-			c.chURLs <- url
 		}
 	}
 	c.queue.Cleanup()
