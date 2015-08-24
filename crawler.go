@@ -84,8 +84,8 @@ func (c *Crawler) crawl() error {
 	for !done {
 		select {
 		case url := <-c.chURLs:
-			c.sleep()
 			c.crawlPage(url)
+			c.sleep()
 		default:
 			url, err := c.queue.Dequeue()
 			if err != nil || url == "" {
@@ -121,9 +121,9 @@ func (c *Crawler) RegisterSpider(spider Spider, ms ...SpiderMiddleware) {
 	c.spiders = append(c.spiders, ReduceSpideMiddlewares(spider, ms...))
 }
 
-func (c *Crawler) runSpider(spider Spider, url string, r io.Reader) {
+func (c *Crawler) runSpider(spider Spider, url string, r io.Reader, err error) {
 	c.wrapper.Wrap(func() {
-		urls, err := spider.Parse(c, url, r)
+		urls, err := spider.Parse(c, url, r, err)
 		if err != nil {
 			c.queue.RetryURL(url)
 		} else {
@@ -136,14 +136,9 @@ func (c *Crawler) runSpider(spider Spider, url string, r io.Reader) {
 func (c *Crawler) crawlPage(url string) {
 	c.Logger.Info("crawling page %s", url)
 	body, err := c.fetcher.Fetch(url)
-	if err != nil {
-		c.Logger.Warning("fetch page %s failed: %s", url, err)
-		c.queue.RetryURL(url)
-		return
-	}
 
 	for _, spider := range c.spiders {
-		c.runSpider(spider, url, bytes.NewReader(body))
+		c.runSpider(spider, url, bytes.NewReader(body), err)
 	}
 	c.wrapper.Wait()
 }
