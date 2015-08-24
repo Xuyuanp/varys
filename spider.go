@@ -4,15 +4,15 @@ import "io"
 
 // Spider interface.
 type Spider interface {
-	Parse(url string, r io.Reader) ([]string, error)
+	Parse(crawler *Crawler, url string, r io.Reader) ([]string, error)
 }
 
 // SpiderFunc type Spider.
-type SpiderFunc func(url string, r io.Reader) ([]string, error)
+type SpiderFunc func(crawler *Crawler, url string, r io.Reader) ([]string, error)
 
 // Parse implements Spider interface.
-func (sf SpiderFunc) Parse(url string, r io.Reader) ([]string, error) {
-	return sf(url, r)
+func (sf SpiderFunc) Parse(crawler *Crawler, url string, r io.Reader) ([]string, error) {
+	return sf(crawler, url, r)
 }
 
 // SpiderMiddleware type.

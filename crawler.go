@@ -19,12 +19,17 @@ package varys
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"math/rand"
 	"os"
 	"time"
 
 	"github.com/Xuyuanp/logo"
+)
+
+var (
+	Running = errors.New("already running")
 )
 
 // Options crawler options.
@@ -42,6 +47,8 @@ type Crawler struct {
 	spiders []Spider
 	queue   Queue
 	Logger  logo.Logger
+
+	running bool
 
 	chURLs chan string
 
@@ -68,6 +75,10 @@ func (c *Crawler) Crawl(startURLs ...string) error {
 }
 
 func (c *Crawler) crawl() error {
+	if c.running {
+		return Running
+	}
+	c.running = true
 	c.queue.Repaire()
 	done := false
 	for !done {
@@ -89,7 +100,13 @@ func (c *Crawler) crawl() error {
 	if failedURLs := c.queue.FailedURLs(); len(failedURLs) > 0 {
 		c.Logger.Warning("failed URLs: %v", failedURLs)
 	}
+	c.running = false
 	return nil
+}
+
+// Running returns crawler's running status.
+func (c *Crawler) Running() bool {
+	return c.running
 }
 
 func (c *Crawler) sleep() {
@@ -106,7 +123,7 @@ func (c *Crawler) RegisterSpider(spider Spider, ms ...SpiderMiddleware) {
 
 func (c *Crawler) runSpider(spider Spider, url string, r io.Reader) {
 	c.wrapper.Wrap(func() {
-		urls, err := spider.Parse(url, r)
+		urls, err := spider.Parse(c, url, r)
 		if err != nil {
 			c.queue.RetryURL(url)
 		} else {
