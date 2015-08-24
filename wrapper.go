@@ -19,10 +19,13 @@ package varys
 
 import "sync"
 
+// Wrapper is a wrapper of sync.WaitGroup.
 type Wrapper struct {
 	sync.WaitGroup
 }
 
+// Wrap executes function in a context of WaitGroup,
+// calls Add before func and calls Done after func.
 func (w *Wrapper) Wrap(fn func()) {
 	w.Add(1)
 	go func() {

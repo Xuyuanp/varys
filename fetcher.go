@@ -48,12 +48,14 @@ func (f *URLFetcher) Fetch(url string) (body []byte, err error) {
 	return ioutil.ReadAll(resp.Body)
 }
 
+// SmartURLFetcher is a Fetcher wrapper auto switches User-Agent.
 type SmartURLFetcher struct {
 	Fetcher
 	userAgents *ring.Ring
 	mu         sync.Mutex
 }
 
+// NewSmartURLFetcher creates new SmartURLFetcher instance.
 func NewSmartURLFetcher(prepare func(*http.Request), userAgents ...string) Fetcher {
 	f := &SmartURLFetcher{}
 	if len(userAgents) == 0 {
