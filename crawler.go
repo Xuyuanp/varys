@@ -111,6 +111,9 @@ func (c *Crawler) Running() bool {
 
 func (c *Crawler) sleep() {
 	rang := c.options.SleptMax - c.options.SleptMin
+	if rang <= 0 {
+		return
+	}
 	r := random.Intn(rang)
 	dur := c.options.SleptMin + r
 	time.Sleep(time.Second * time.Duration(dur))
@@ -125,6 +128,7 @@ func (c *Crawler) runSpider(spider Spider, url string, r io.Reader, err error) {
 	c.wrapper.Wrap(func() {
 		urls, err := spider.Parse(c, url, r, err)
 		if err != nil {
+			c.Logger.Warning("fetch url %s failed: %s", url, err)
 			c.queue.RetryURL(url)
 		} else {
 			c.queue.DoneURL(url)
