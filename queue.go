@@ -6,6 +6,7 @@ import (
 	"github.com/garyburd/redigo/redis"
 )
 
+// Queue interface
 type Queue interface {
 	Enqueue(urls ...string) error
 	Dequeue() (string, error)
@@ -20,6 +21,7 @@ type Queue interface {
 	Cleanup()
 }
 
+// RedisQueue is an redis-based implementation of Queue interface.
 type RedisQueue struct {
 	pool *redis.Pool
 
@@ -29,6 +31,7 @@ type RedisQueue struct {
 	QueueFailed  string
 }
 
+// NewRedisQueue creates a new RedisQueue instance.
 func NewRedisQueue(url, password, prefix string) *RedisQueue {
 	return &RedisQueue{
 		pool: &redis.Pool{
@@ -59,6 +62,7 @@ func NewRedisQueue(url, password, prefix string) *RedisQueue {
 	}
 }
 
+// Enqueue adds urls into ready queue.
 func (q *RedisQueue) Enqueue(urls ...string) error {
 	conn := q.pool.Get()
 	defer conn.Close()

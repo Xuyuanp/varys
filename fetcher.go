@@ -22,11 +22,13 @@ type URLFetcher struct {
 	client  *http.Client
 }
 
+// FetcherOptions struct
 type FetcherOptions struct {
 	Timeout time.Duration
 	Prepare func(*http.Request)
 }
 
+// NewFetcher creates a new Fetcher instance.
 func NewFetcher(opts FetcherOptions) Fetcher {
 	cfg := &tls.Config{InsecureSkipVerify: true}
 	transport := &http.Transport{TLSClientConfig: cfg}

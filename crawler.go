@@ -28,8 +28,9 @@ import (
 	"github.com/Xuyuanp/logo"
 )
 
+// Error var
 var (
-	Running = errors.New("already running")
+	ErrRunning = errors.New("already running")
 )
 
 // Options crawler options.
@@ -76,7 +77,7 @@ func (c *Crawler) Crawl(startURLs ...string) error {
 
 func (c *Crawler) crawl() error {
 	if c.running {
-		return Running
+		return ErrRunning
 	}
 	c.running = true
 	c.queue.Repaire()
